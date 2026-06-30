@@ -8,12 +8,19 @@
 @implementation FB2KLyricsLine
 @end
 
-@interface FB2KLyricsController : NSWindowController
+static NSString *const kLyricsFrameName = @"foo_lyrics_macos.windowFrame";
+static NSString *const kOffsetXKey = @"foo_lyrics_macos.offsetX";
+static NSString *const kOffsetYKey = @"foo_lyrics_macos.offsetY";
+static NSString *const kHasOffsetKey = @"foo_lyrics_macos.hasOffset";
+
+@interface FB2KLyricsController : NSWindowController <NSWindowDelegate>
 @property(strong) NSTextField *heading;
 @property(strong) NSTextView *textView;
 @property(strong) NSArray<FB2KLyricsLine *> *lines;
 @property NSInteger activeLine;
 @property BOOL estimatedTiming;
+@property(weak) NSWindow *foobarWindow;
+- (void)attachToFoobarWindow;
 @end
 
 @implementation FB2KLyricsController
@@ -25,7 +32,10 @@
     if ((self = [super initWithWindow:window])) {
         window.title = @"Lyrics";
         window.minSize = NSMakeSize(360, 260);
-        [window center];
+        window.delegate = self;
+        BOOL restored = [window setFrameUsingName:kLyricsFrameName];
+        [window setFrameAutosaveName:kLyricsFrameName];
+        if (!restored) [window center];
         NSView *root = window.contentView;
 
         _heading = [NSTextField labelWithString:@"等待播放…"];
@@ -60,6 +70,58 @@
         _activeLine = -1;
     }
     return self;
+}
+
+- (NSWindow *)findFoobarWindow {
+    for (NSWindow *candidate in NSApp.windows) {
+        if (candidate == self.window || !candidate.isVisible || [candidate isKindOfClass:NSPanel.class]) continue;
+        if ([candidate.title.lowercaseString containsString:@"foobar2000"]) return candidate;
+    }
+    for (NSWindow *candidate in NSApp.windows) {
+        if (candidate != self.window && candidate.isVisible && ![candidate isKindOfClass:NSPanel.class]) return candidate;
+    }
+    return nil;
+}
+
+- (void)attachToFoobarWindow {
+    NSWindow *main = [self findFoobarWindow];
+    if (!main) return;
+    if (self.foobarWindow && self.foobarWindow != main)
+        [self.foobarWindow removeChildWindow:self.window];
+
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    NSRect frame = self.window.frame;
+    if ([defaults boolForKey:kHasOffsetKey]) {
+        frame.origin.x = NSMinX(main.frame) + [defaults doubleForKey:kOffsetXKey];
+        frame.origin.y = NSMinY(main.frame) + [defaults doubleForKey:kOffsetYKey];
+    } else {
+        frame.origin.x = NSMinX(main.frame) - NSWidth(frame) - 8;
+        frame.origin.y = NSMaxY(main.frame) - NSHeight(frame);
+        NSScreen *screen = main.screen ?: NSScreen.mainScreen;
+        if (screen && NSMinX(frame) < NSMinX(screen.visibleFrame))
+            frame.origin.x = NSMaxX(main.frame) + 8;
+    }
+    [self.window setFrame:frame display:NO];
+    self.foobarWindow = main;
+    if (![main.childWindows containsObject:self.window])
+        [main addChildWindow:self.window ordered:NSWindowAbove];
+    [self saveRelativeOffset];
+}
+
+- (void)saveRelativeOffset {
+    if (!self.foobarWindow) return;
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    [defaults setDouble:NSMinX(self.window.frame) - NSMinX(self.foobarWindow.frame) forKey:kOffsetXKey];
+    [defaults setDouble:NSMinY(self.window.frame) - NSMinY(self.foobarWindow.frame) forKey:kOffsetYKey];
+    [defaults setBool:YES forKey:kHasOffsetKey];
+}
+
+- (void)windowDidMove:(NSNotification *)notification { [self saveRelativeOffset]; }
+- (void)windowDidResize:(NSNotification *)notification { [self saveRelativeOffset]; }
+- (void)windowWillClose:(NSNotification *)notification {
+    [self saveRelativeOffset];
+    [self.foobarWindow removeChildWindow:self.window];
+    self.foobarWindow = nil;
 }
 
 - (NSString *)localPathFromFoobarPath:(NSString *)path {
@@ -150,6 +212,7 @@
     }
     [self applyHighlight:-1];
     [self showWindow:nil];
+    [self attachToFoobarWindow];
 }
 
 - (void)applyHighlight:(NSInteger)index {
@@ -197,8 +260,8 @@ static FB2KLyricsController *gLyrics;
 static void onMain(dispatch_block_t block) { dispatch_async(dispatch_get_main_queue(), block); }
 
 void lyrics_window_initialize(void) { onMain(^{ if (!gLyrics) gLyrics = [FB2KLyricsController new]; }); }
-void lyrics_window_shutdown(void) { onMain(^{ [gLyrics close]; gLyrics = nil; }); }
-void lyrics_window_show(void) { onMain(^{ if (!gLyrics) gLyrics = [FB2KLyricsController new]; [gLyrics showWindow:nil]; [gLyrics.window makeKeyAndOrderFront:nil]; }); }
+void lyrics_window_shutdown(void) { onMain(^{ [gLyrics.foobarWindow removeChildWindow:gLyrics.window]; [gLyrics close]; gLyrics = nil; }); }
+void lyrics_window_show(void) { onMain(^{ if (!gLyrics) gLyrics = [FB2KLyricsController new]; [gLyrics showWindow:nil]; [gLyrics attachToFoobarWindow]; [gLyrics.window makeKeyAndOrderFront:nil]; }); }
 void lyrics_window_set_track(const char *title, const char *artist, const char *path, double duration) {
     NSString *t = title ? [NSString stringWithUTF8String:title] : @"";
     NSString *a = artist ? [NSString stringWithUTF8String:artist] : @"";

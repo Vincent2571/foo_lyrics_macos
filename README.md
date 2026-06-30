@@ -18,6 +18,8 @@ For `/Music/Artist/Song.flac`, use either:
 
 Timestamped LRC lines such as `[01:23.45]Text` are synchronized precisely. Plain-text LRC files use estimated per-line timing based on track duration and are labeled `估算同步`.
 
+The lyrics window attaches to the foobar2000 main window and follows it when the player moves. Window size, position, and relative docking offset are restored across launches.
+
 ## Build
 
 Run `./script/build_and_run.sh --verify`. The component is staged in `dist/`.
