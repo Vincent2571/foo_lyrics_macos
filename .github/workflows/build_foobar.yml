@@ -1,0 +1,19 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Apple Silicon component
+        run: ./script/build_and_run.sh --verify
+      - name: Upload component
+        uses: actions/upload-artifact@v4
+        with:
+          name: foo_lyrics_macos-arm64
+          path: dist/foo_lyrics_macos.component

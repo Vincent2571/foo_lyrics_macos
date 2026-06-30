@@ -1,0 +1,15 @@
+# Build products
+build/
+dist/
+
+# Xcode user state
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+
+# macOS
+.DS_Store
+
+# Local IDE files
+.idea/
+.vscode/
